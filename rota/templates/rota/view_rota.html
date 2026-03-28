@@ -1,0 +1,499 @@
+{% extends 'rota/base.html' %}
+{% load rota_extras %}
+{% block title %}{{ period.label }} – Rota{% endblock %}
+{% block extra_head %}
+<style>
+  .rota-wrap { overflow-x: auto; }
+  table.rota-table th { background: var(--navy); color: #fff; font-size: 11px; padding: 5px 4px; }
+  table.rota-table td { height: 22px; cursor: pointer; transition: opacity .15s; }
+  table.rota-table td:hover { opacity: .75; outline: 2px solid var(--blue); }
+  .event-header td { background: #fff3cd !important; font-size: 10px; color: #6b4c00; padding: 2px 4px; cursor: default; line-height: 1.3; }
+  .event-header td:hover { opacity:1 !important; outline:none !important; }
+  .event-tag { display:inline-block; background:#ffc107; color:#5a3e00; border-radius:10px; padding:1px 7px; font-size:9px; font-weight:700; margin:1px 2px; white-space:nowrap; }
+  .rec-tooltip { position:fixed; background:#1f4e79; color:#fff; border-radius:8px; padding:10px 14px; font-size:11px; z-index:2000; display:none; pointer-events:none; max-width:280px; box-shadow:0 4px 16px rgba(0,0,0,.3); }
+  .rec-tooltip .rec-row { display:flex; justify-content:space-between; gap:10px; padding:2px 0; border-bottom:1px solid rgba(255,255,255,.2); }
+  .rec-tooltip .rec-row:last-child { border:none; }
+  .edit-popup { position:fixed; background:#fff; border:2px solid var(--navy); border-radius:8px; padding:14px; box-shadow:0 4px 16px rgba(0,0,0,.2); z-index:1000; display:none; min-width:210px; }
+  .edit-popup h3 { font-size:13px; margin-bottom:10px; color:var(--navy); }
+  .edit-popup select, .edit-popup input { width:100%; margin-bottom:8px; }
+  .highlights-bar { background:#fff8e1; border:1px solid #ffe082; border-radius:6px; padding:8px 14px; margin-bottom:12px; font-size:12px; color:#5a3e00; }
+  .hours-row td { font-size:10px !important; font-weight:700; height:18px !important; background:#f8f9fa !important; cursor:default !important; }
+  /* Prevent clicking non-shift tds from triggering openEdit */
+  tr.section-row td, tr.hours-row td, tr.event-header td { pointer-events: none; }
+  tr.section-row td:hover, tr.hours-row td:hover { opacity:1 !important; outline:none !important; cursor:default !important; }
+  .hours-row td:hover { opacity:1 !important; outline:none !important; }
+  .borrowed-label { font-size:9px; color:#a06000; background:#fff0cc; border-radius:3px; padding:0 3px; display:block; white-space:nowrap; }
+  .cell-label { font-size:8px; color:#444; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:72px; line-height:1.2; margin-top:1px; opacity:.8; }
+  .cell-label.brunch { color:#7b3f00; background:#fff3e0; border-radius:2px; padding:0 2px; }
+  .ledger-panel { margin-top:16px; }
+  .ledger-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .ledger-table th { background:var(--navy); color:#fff; padding:6px 10px; text-align:left; }
+  .ledger-table td { padding:5px 10px; border-bottom:1px solid #eee; }
+  .ledger-ok    { color:#1a8754; font-weight:700; }
+  .ledger-under { color:#856404; font-weight:700; }
+  .ledger-over  { color:#c0392b; font-weight:700; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+  <h1 style="margin:0;">{{ period.label }}</h1>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="/rota/{{ period.id }}/highlights/" class="btn btn-primary">✏ Highlights &amp; Events</a>
+    <a href="/rota/{{ period.id }}/export/" class="btn btn-success">⬇ Export Excel</a>
+    <a href="/" class="btn btn-outline">← Back</a>
+  </div>
+</div>
+
+{% if period.highlights %}
+<div class="highlights-bar"><strong>Highlights:</strong> {{ period.highlights|truncatechars:200 }}</div>
+{% endif %}
+
+<!-- Colour legend -->
+<div class="legend">
+  <span><span class="legend-box" style="background:var(--shift-early);"></span> Early (before 08:00)</span>
+  <span><span class="legend-box" style="background:var(--shift-am);"></span> AM (08:00–11:59)</span>
+  <span><span class="legend-box" style="background:var(--shift-pm);"></span> PM (12:00–17:59)</span>
+  <span><span class="legend-box" style="background:var(--shift-late);"></span> Late (18:00–21:59)</span>
+  <span><span class="legend-box" style="background:var(--shift-night);"></span> Night (22:00+)</span>
+  <span><span class="legend-box" style="background:var(--shift-off);"></span> OFF</span>
+  <span><span class="legend-box" style="background:var(--shift-h);"></span> Holiday</span>
+  <span><span class="legend-box" style="background:var(--shift-sick);"></span> Sick</span>
+  <span><span class="legend-box" style="background:#fff3cd;border:1px solid #ffe082;"></span> Event day</span>
+</div>
+<p style="font-size:11px;color:#888;margin-bottom:10px;">💡 Click any cell to edit. Hover the event row for staffing recommendations. Bottom row shows weekly hours per chef.</p>
+
+<div class="rota-wrap">
+<table class="rota-table" id="rota-tbl">
+  <thead>
+    <!-- Event banner row -->
+    <tr class="event-header">
+      <td class="col-name" style="background:var(--navy)!important;color:#fff;font-size:11px;cursor:default;">Events</td>
+      {% for d in dates %}
+      {% with date_iso=d|date:'Y-m-d' %}
+      <td data-date="{{ date_iso }}" onmouseenter="showRec(this)" onmouseleave="hideRec()">
+        {% for ev_date, evs in events_by_date.items %}{% if ev_date == d %}{% for ev in evs %}<span class="event-tag">{{ ev.pax }}px {{ ev.event_type }}</span>{% endfor %}{% endif %}{% endfor %}
+      </td>
+      {% endwith %}
+      {% endfor %}
+    </tr>
+    <tr>
+      <th class="col-name">Chef Name</th>
+      {% for d in dates %}
+      <th style="min-width:72px;">
+        {% with wd=d.weekday %}{% if wd == 0 %}Mon{% elif wd == 1 %}Tue{% elif wd == 2 %}Wed{% elif wd == 3 %}Thu{% elif wd == 4 %}Fri{% elif wd == 5 %}<span style="color:#ffd966;">Sat</span>{% else %}<span style="color:#ffd966;">Sun</span>{% endif %}{% endwith %}
+        <br>{{ d|date:"d M" }}
+      </th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for section_data in rota_data %}
+    <tr class="section-row {{ section_data.section|section_css_class }}">
+      <td class="col-name" colspan="{{ dates|length|add:1 }}">{{ section_data.section.name }}</td>
+    </tr>
+    {% for row in section_data.staff_rows %}
+    <tr>
+      <td class="col-name" title="{{ row.staff.role }} — {{ row.staff.contracted_hours_pw }}h/wk">
+        {{ row.staff.name }}
+        {% if row.staff.role %}<span style="display:block;font-size:10px;font-weight:400;color:#555;">{{ row.staff.role }}</span>{% endif %}
+      </td>
+      {% for d, shift in row.shifts %}
+      {% with date_iso=d|date:'Y-m-d' %}
+      <td class="{{ shift|shift_css_class }}{% if d.weekday >= 5 %} weekend{% endif %}"
+          data-period="{{ period.id }}" data-staff="{{ row.staff.id }}"
+          data-date="{{ date_iso }}" data-shift="{{ shift }}"
+          onclick="openEdit(this)">
+        {{ shift }}
+      </td>
+      {% endwith %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    <!-- Hours summary row for this section -->
+    <tr class="hours-row">
+      <td class="col-name" style="background:#eef4fb!important;font-size:10px;">hrs/wk ▸</td>
+      {% for d in dates %}
+      {% with date_iso=d|date:'Y-m-d' %}
+      <td style="background:#eef4fb!important;" id="hrs-{{ section_data.section.id }}-{{ date_iso }}">—</td>
+      {% endwith %}
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<!-- Monthly hours ledger -->
+<div class="card ledger-panel" id="ledger-panel">
+  <h2 style="margin-bottom:12px;">📊 Monthly Hours Ledger</h2>
+  <p style="font-size:11px;color:#888;margin-bottom:10px;">
+    H (holiday) days = 8 paid hours. Working hours are net (30-min break deducted).
+    Target = 173.5 h for full-time staff.
+  </p>
+  <div id="ledger-content" style="overflow-x:auto;"></div>
+</div>
+
+<!-- Recommendation tooltip -->
+<div class="rec-tooltip" id="rec-tooltip"></div>
+
+<!-- Edit popup -->
+<div class="edit-popup" id="edit-popup" onclick="event.stopPropagation()">
+  <div style="display:flex;gap:0;margin-bottom:10px;border-bottom:2px solid #eee;">
+    <button onclick="showTab('edit')" id="tab-edit" style="flex:1;padding:4px;border:none;background:var(--navy);color:#fff;font-weight:700;font-size:11px;cursor:pointer;border-radius:4px 0 0 0;">✏ Edit</button>
+    <button onclick="showTab('why')"  id="tab-why"  style="flex:1;padding:4px;border:none;background:#eee;color:#555;font-weight:700;font-size:11px;cursor:pointer;border-radius:0 4px 0 0;">❓ Why</button>
+  </div>
+  <h3 id="popup-title">Edit Shift</h3>
+  <div id="why-panel" style="display:none;font-size:11px;max-height:240px;overflow-y:auto;"></div>
+  <div id="edit-panel">
+  <select id="popup-status">
+    <option value="">— Custom —</option>
+    <optgroup label="Non-working">
+      <option value="OFF">OFF</option>
+      <option value="H">H (Holiday)</option>
+      <option value="SICK">SICK</option>
+      <option value="Comp">Comp</option>
+      <option value="Paternity">Paternity</option>
+      <option value="Maternity">Maternity</option>
+      <option value="TBC">TBC</option>
+      <option value="OFF/R">OFF/R</option>
+    </optgroup>
+    <optgroup label="Early shifts (before 08:00)">
+      <option value="0400-1230">0400-1230</option>
+      <option value="0430-1230">0430-1230</option>
+      <option value="0500-1330">0500-1330</option>
+      <option value="0600-1430">0600-1430</option>
+      <option value="0700-1500">0700-1500</option>
+      <option value="0700-1530">0700-1530</option>
+    </optgroup>
+    <optgroup label="AM shifts (08:00–11:59)">
+      <option value="0800-1600">0800-1600</option>
+      <option value="0800-1630">0800-1630</option>
+      <option value="0800-1700">0800-1700</option>
+      <option value="0800-2100">0800-2100</option>
+      <option value="0900-1730">0900-1730</option>
+      <option value="0900-1900">0900-1900</option>
+    </optgroup>
+    <optgroup label="PM shifts (12:00–17:59)">
+      <option value="1000-1830">1000-1830</option>
+      <option value="1000-2130">1000-2130</option>
+      <option value="1100-1930">1100-1930</option>
+      <option value="1100-2200">1100-2200</option>
+      <option value="1200-2100">1200-2100</option>
+      <option value="1200-2130">1200-2130</option>
+      <option value="1430-2130">1430-2130</option>
+      <option value="1430-2300">1430-2300</option>
+      <option value="1530-2300">1530-2300</option>
+    </optgroup>
+    <optgroup label="Night shifts">
+      <option value="2130-0600">2130-0600</option>
+      <option value="2200-0630">2200-0630</option>
+    </optgroup>
+  </select>
+  <input type="text" id="popup-custom" placeholder="Custom e.g. 1030-1900">
+  <div style="display:flex;gap:6px;">
+    <button class="btn btn-primary btn-sm" onclick="saveEdit()">Save</button>
+    <button class="btn btn-outline btn-sm" onclick="closeEdit()">Cancel</button>
+  </div>
+  </div>
+</div>
+
+<script>
+const RECOMMENDATIONS = {{ recommendations_json|safe }};
+const BORROWED_MAP = {{ borrowed_map_json|safe }};
+const CELL_LABELS = {{ cell_labels_json|safe }};
+const LEDGER_DATA = {{ ledger_json|safe }};
+const MONTHS_IN_PERIOD = {{ months_in_period|safe }};
+const HOURS_DATA = {{ hours_json|safe }};
+
+let activeCell = null;
+
+// ── Hours summary row population ─────────────────────────────────────
+// hours_json: {staff_id: {date_iso: minutes_this_week}}
+// We render the per-week total in the first cell of each week
+(function populateHours() {
+  // HOURS_DATA format: {staff_id_str: {week_start_iso: minutes}}
+  // We show total hours under each date column for that week
+  // Map date → week_start
+  const dateToWeek = {{ date_to_week_json|safe }};
+  // section_staff_ids: { section_id: [staff_ids] }
+  const sectionStaff = {{ section_staff_json|safe }};
+
+  // For each section, compute total section hours per date
+  Object.entries(sectionStaff).forEach(([secId, staffIds]) => {
+    // Group dates into weeks
+    const weekTotals = {};  // date_iso → total minutes for that week
+    Object.entries(dateToWeek).forEach(([dateIso, weekStart]) => {
+      let total = 0;
+      staffIds.forEach(sid => {
+        const staffData = HOURS_DATA[sid] || {};
+        const wkMins = staffData[weekStart] || 0;
+        total += wkMins;
+      });
+      weekTotals[dateIso] = total;
+    });
+
+    // Mark only first date of each week with total, others blank
+    const seen = new Set();
+    Object.entries(dateToWeek).forEach(([dateIso, weekStart]) => {
+      const cell = document.getElementById('hrs-' + secId + '-' + dateIso);
+      if (!cell) return;
+      if (!seen.has(weekStart)) {
+        seen.add(weekStart);
+        const hrs = (weekTotals[dateIso] / 60).toFixed(1);
+        const perPerson = staffIds.length > 0 ? (weekTotals[dateIso] / staffIds.length / 60).toFixed(1) : 0;
+        const ok = parseFloat(perPerson) >= 32 && parseFloat(perPerson) <= 48;
+        const over = parseFloat(perPerson) > 48;
+        cell.textContent = `${hrs}h total / ${perPerson}h avg`;
+        cell.className = ok ? 'hrs-ok' : (over ? 'hrs-over' : 'hrs-under');
+        cell.title = `Section total ${hrs}h | avg per chef ${perPerson}h (target 32–48h)`;
+      } else {
+        cell.textContent = '';
+      }
+    });
+  });
+})();
+
+// ── Cell section labels ────────────────────────────────────────────────
+(function annotateCellLabels() {
+  if (!CELL_LABELS || Object.keys(CELL_LABELS).length === 0) return;
+  const NON_WORKING = new Set(['OFF','H','SICK','Comp','Paternity','Maternity','TBC','OFF/R','']);
+  Object.entries(CELL_LABELS).forEach(([key, lbl]) => {
+    if (!lbl) return;
+    const [sid, dateIso] = key.split('|');
+    const cell = document.querySelector(`td[data-staff="${sid}"][data-date="${dateIso}"]`);
+    if (!cell) return;
+    const shift = cell.dataset.shift || '';
+    if (!shift || NON_WORKING.has(shift)) return;
+    // Apply colour class based on label
+    if (lbl === 'BRUNCH') {
+      cell.classList.remove('shift-early','shift-am','shift-pm','shift-late','shift-night','shift-breakfast');
+      cell.classList.add('shift-brunch');
+    } else if (lbl === 'Breakfast' || lbl === 'Club') {
+      cell.classList.remove('shift-early','shift-am','shift-pm','shift-late','shift-night','shift-brunch');
+      cell.classList.add('shift-breakfast');
+    }
+    // Add text label span
+    const span = document.createElement('span');
+    span.className = lbl === 'BRUNCH' ? 'cell-label brunch' : 'cell-label';
+    span.textContent = lbl;
+    cell.appendChild(span);
+  });
+})();
+
+// ── Monthly hours ledger ────────────────────────────────────────────
+(function buildLedger() {
+  if (!LEDGER_DATA || Object.keys(LEDGER_DATA).length === 0) {
+    document.getElementById('ledger-panel').style.display = 'none';
+    return;
+  }
+  // Group by month
+  const byMonth = {};
+  Object.entries(LEDGER_DATA).forEach(([key, rec]) => {
+    const [sidStr, month] = key.split('_');
+    if (!byMonth[month]) byMonth[month] = [];
+    byMonth[month].push({sid: parseInt(sidStr), ...rec});
+  });
+
+  let html = '';
+  Object.entries(byMonth).sort().forEach(([month, recs]) => {
+    html += `<h3 style="font-size:13px;color:var(--navy);margin:12px 0 6px;">${month}</h3>`;
+    html += `<table class="ledger-table"><thead><tr>
+      <th>Chef</th><th>Working</th><th>Holiday</th><th>Total</th><th>Target</th><th>Variance</th><th>Status</th>
+    </tr></thead><tbody>`;
+    recs.forEach(rec => {
+      const name = document.querySelector(`[data-staff="${rec.sid}"]`)
+                    ?.closest('tr')?.querySelector('.col-name')
+                    ?.textContent?.trim()?.split('\n')[0] || `Staff #${rec.sid}`;
+      const wH   = (rec.net_minutes / 60).toFixed(1);
+      const holH = (rec.holiday_minutes / 60).toFixed(1);
+      const totH = (rec.total_minutes / 60).toFixed(1);
+      const tgtH = (rec.target_minutes / 60).toFixed(1);
+      const varM = rec.variance_minutes;
+      const varH = (Math.abs(varM) / 60).toFixed(1);
+      const varStr = varM >= 0 ? `+${varH}h` : `-${varH}h`;
+      const cls  = rec.status === 'ok' ? 'ledger-ok' : rec.status === 'over' ? 'ledger-over' : 'ledger-under';
+      const statusLabel = rec.status === 'ok' ? 'On target' : rec.status === 'over' ? 'Over hours' : 'Under hours';
+      html += `<tr>
+        <td>${name}</td>
+        <td>${wH}h</td><td>${holH}h</td>
+        <td><strong>${totH}h</strong></td>
+        <td>${tgtH}h</td>
+        <td class="${cls}">${varStr}</td>
+        <td class="${cls}">${statusLabel}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  });
+  document.getElementById('ledger-content').innerHTML = html;
+})();
+
+// ── Recommendation tooltip ───────────────────────────────────────────
+function showRec(cell) {
+  const dateIso = cell.dataset.date;
+  const rec = RECOMMENDATIONS[dateIso];
+  if (!rec) return;
+  const tt = document.getElementById('rec-tooltip');
+  let html = `<div style="font-weight:700;margin-bottom:6px;">📊 ${rec.tier.toUpperCase()} · ${rec.total_pax} pax</div>`;
+  (rec.sections || []).forEach(s => {
+    html += `<div class="rec-row"><span>${s.section_name}</span><span style="font-weight:700;">${s.staff_count} staff</span><span style="font-family:monospace;font-size:10px;">${s.shift}</span></div>`;
+  });
+  tt.innerHTML = html;
+  tt.style.display = 'block';
+  const r = cell.getBoundingClientRect();
+  tt.style.top  = (r.bottom + window.scrollY + 6) + 'px';
+  tt.style.left = Math.min(r.left + window.scrollX, window.innerWidth - 300) + 'px';
+}
+function hideRec() { document.getElementById('rec-tooltip').style.display = 'none'; }
+
+// ── Cell edit popup ──────────────────────────────────────────────────
+function openEdit(cell) {
+  // Only act on real shift cells (must have data-period and data-shift attributes)
+  if (!cell.dataset.period || cell.dataset.shift === undefined) return;
+  activeCell = cell;
+  const shift = cell.dataset.shift;
+  document.getElementById('popup-title').textContent =
+    `${cell.closest('tr').querySelector('.col-name').textContent.trim().split('\n')[0]} · ${cell.dataset.date}`;
+  const sel = document.getElementById('popup-status');
+  sel.value = '';
+  for (let opt of sel.options) { if (opt.value === shift) { sel.value = shift; break; } }
+  document.getElementById('popup-custom').value = sel.value ? '' : shift;
+  const popup = document.getElementById('edit-popup');
+  popup.style.display = 'block';
+  popup.style.transform = '';
+  // Position below the clicked cell, staying within viewport
+  const rect = cell.getBoundingClientRect();
+  const popupH = 220;  // approximate popup height
+  const spaceBelow = window.innerHeight - rect.bottom;
+  let top = spaceBelow >= popupH
+    ? rect.bottom + 6              // below the cell
+    : Math.max(10, rect.top - popupH - 6); // above the cell
+  let left = Math.min(rect.left, window.innerWidth - 230);
+  left = Math.max(4, left);
+  popup.style.top  = top + 'px';
+  popup.style.left = left + 'px';
+}
+function closeEdit() { document.getElementById('edit-popup').style.display = 'none'; activeCell = null; }
+
+async function saveEdit() {
+  const sel = document.getElementById('popup-status');
+  const custom = document.getElementById('popup-custom').value.trim();
+  const value = custom || sel.value;
+  if (!value) { alert('Please enter a shift value.'); return; }
+  const resp = await fetch('/api/shift/update/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify({
+      period_id: activeCell.dataset.period,
+      staff_id: activeCell.dataset.staff,
+      date: activeCell.dataset.date,
+      shift_value: value,
+    }),
+  });
+  let data;
+  try { data = await resp.json(); } catch(e) { alert('Server error: ' + resp.status); return; }
+  if (data.status === 'ok') {
+    // Rebuild cell content completely
+    activeCell.innerHTML = '';
+    activeCell.textContent = value;
+    activeCell.dataset.shift = value;
+    // Re-add cell label if present
+    const cellKey = activeCell.dataset.staff + '|' + activeCell.dataset.date;
+    if (CELL_LABELS[cellKey] && !['OFF','H','SICK','Comp','Paternity','Maternity','TBC','OFF/R',''].includes(value)) {
+      const lbl = CELL_LABELS[cellKey];
+      const span = document.createElement('span');
+      span.className = lbl === 'BRUNCH' ? 'cell-label brunch' : 'cell-label';
+      span.textContent = lbl;
+      activeCell.appendChild(span);
+    }
+    // Rebuild CSS classes from scratch
+    const wasWeekend = activeCell.classList.contains('weekend');
+    activeCell.className = '';
+    activeCell.classList.add(getShiftClass(value));
+    if (wasWeekend) activeCell.classList.add('weekend');
+    activeCell.style.outline = '3px solid #1a8754';
+    setTimeout(() => { activeCell.style.outline = ''; }, 1500);
+    closeEdit();
+  } else {
+    alert('Could not save: ' + (data.message || 'Unknown error'));
+  }
+}
+
+function getShiftClass(v) {
+  if (!v || ['OFF','H','SICK','Comp','Paternity','Maternity','TBC','OFF/R',''].includes(v)) {
+    if (v === 'H') return 'shift-h';
+    if (v === 'SICK') return 'shift-sick';
+    if (['Comp','Paternity','Maternity','TBC','OFF/R'].includes(v)) return 'shift-other';
+    return 'shift-off';
+  }
+  const m = v.match(/^(\d{4})-/);
+  if (!m) return 'shift-other';
+  const s = parseInt(m[1]);
+  if (s < 800)  return 'shift-early';
+  if (s < 1200) return 'shift-am';
+  if (s < 1800) return 'shift-pm';
+  if (s < 2200) return 'shift-late';
+  return 'shift-night';
+}
+
+// ── WHY tab ──────────────────────────────────────────────────────────────
+function showTab(tab) {
+  document.getElementById('why-panel').style.display  = tab === 'why'  ? '' : 'none';
+  document.getElementById('edit-panel').style.display = tab === 'edit' ? '' : 'none';
+  document.getElementById('tab-edit').style.background = tab === 'edit' ? 'var(--navy)' : '#eee';
+  document.getElementById('tab-edit').style.color      = tab === 'edit' ? '#fff' : '#555';
+  document.getElementById('tab-why').style.background  = tab === 'why'  ? 'var(--navy)' : '#eee';
+  document.getElementById('tab-why').style.color       = tab === 'why'  ? '#fff' : '#555';
+  if (tab === 'why' && activeCell) fetchWhy();
+}
+
+async function fetchWhy() {
+  const panel = document.getElementById('why-panel');
+  panel.innerHTML = '<p style="color:#888;padding:8px;">Loading...</p>';
+  const pid = activeCell.dataset.period;
+  const sid = activeCell.dataset.staff;
+  const dt  = activeCell.dataset.date;
+  try {
+    const resp = await fetch(`/api/shift/why/?period_id=${pid}&staff_id=${sid}&date=${dt}`);
+    const data = await resp.json();
+    if (data.status !== 'ok') { panel.innerHTML = '<p style="color:red;">Could not load reasons.</p>'; return; }
+    const sevColor = {info:'#1a5276',warning:'#7d6608',critical:'#922b21'};
+    const sevBg    = {info:'#d6eaf8',warning:'#fef9e7',critical:'#fdedec'};
+    let html = `<p style="margin-bottom:6px;"><strong>${data.shift}</strong> · ${data.date}`;
+    if (data.locked_by_manager) html += ' <span style="background:#c0392b;color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;">Manager set</span>';
+    html += '</p>';
+    (data.reasons || []).forEach(r => {
+      html += `<div style="background:${sevBg[r.severity]||'#eee'};border-left:3px solid ${sevColor[r.severity]||'#888'};padding:5px 8px;margin-bottom:5px;border-radius:0 4px 4px 0;">
+        <strong style="color:${sevColor[r.severity]};font-size:10px;">${r.label}</strong>
+        <div style="color:#333;margin-top:2px;">${r.explanation}</div>
+      </div>`;
+    });
+    if ((data.colleagues_on_rest||[]).length) {
+      html += '<p style="margin-top:8px;font-size:10px;color:#888;">Same-section on rest that day:</p>';
+      data.colleagues_on_rest.forEach(c => {
+        html += `<span style="background:#eee;padding:1px 6px;border-radius:3px;font-size:10px;margin:2px;display:inline-block;">${c.staff} (${c.status})</span>`;
+      });
+    }
+    panel.innerHTML = html;
+  } catch(e) {
+    panel.innerHTML = '<p style="color:red;">Error loading reasons.</p>';
+  }
+}
+
+// ── CSRF token embedded directly - works even without a form on the page
+const CSRF_TOKEN = '{{ csrf_token }}';
+function getCookie(name) {
+  // Try cookie first, fall back to embedded token
+  let v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+  return v ? v[2] : CSRF_TOKEN;
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeEdit(); });
+// Close popup when clicking anywhere outside it
+document.addEventListener('click', e => {
+  const popup = document.getElementById('edit-popup');
+  if (popup.style.display === 'block' && !popup.contains(e.target) && e.target !== activeCell) {
+    closeEdit();
+  }
+});
+</script>
+{% endblock %}

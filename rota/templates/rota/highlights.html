@@ -1,0 +1,262 @@
+{% extends 'rota/base.html' %}
+{% block title %}Highlights & Events – {{ period.label }}{% endblock %}
+{% block extra_head %}
+<style>
+  .events-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media(max-width:900px){ .events-grid { grid-template-columns: 1fr; } }
+  .event-card { background:#fff; border:1px solid #ddd; border-radius:8px; padding:14px; position:relative; }
+  .event-card .tier-badge { position:absolute; top:10px; right:10px; padding:3px 9px; border-radius:12px; font-size:11px; font-weight:700; }
+  .tier-tasting  { background:#e8e8e8; color:#555; }
+  .tier-small    { background:#d6e4f7; color:#1f4e79; }
+  .tier-medium   { background:#e2efda; color:#2a6e00; }
+  .tier-large    { background:#ffd966; color:#7a5700; }
+  .tier-vip      { background:#ff9966; color:#6e1a00; }
+  .rec-panel { background:#f0f6ff; border:1px solid #bcd4f5; border-radius:6px; padding:12px; margin-top:10px; }
+  .rec-panel h4 { font-size:12px; color:#1f4e79; margin-bottom:8px; }
+  .rec-row { display:flex; justify-content:space-between; font-size:11px; padding:3px 0; border-bottom:1px solid #dde8f8; }
+  .rec-row:last-child { border-bottom:none; }
+  .rec-row .sec-name { font-weight:600; color:#333; }
+  .rec-row .count { color:#1f4e79; font-weight:700; }
+  .rec-row .shift { font-family:monospace; color:#555; font-size:10px; }
+  .add-event-form { background:#f9f9f9; border:1px solid #ddd; border-radius:8px; padding:16px; }
+  .form-row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px; }
+  .form-row .form-group { margin:0; }
+  .date-section-header { background:var(--light-blue); padding:8px 12px; font-weight:700; font-size:13px; color:var(--navy); border-radius:5px; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .date-section-header .day-pax { font-size:11px; font-weight:400; color:#445; }
+  .btn-danger { background:#c0392b; color:#fff; }
+  .btn-danger:hover { background:#a93226; }
+  .empty-state { text-align:center; padding:40px; color:#888; font-size:13px; }
+  .tier-label { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; margin-left:6px; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+  <div>
+    <h1 style="margin:0;">Highlights &amp; Events</h1>
+    <p style="color:#666;margin-top:4px;">{{ period.label }} &nbsp;·&nbsp; {{ period.start_date }} – {{ period.end_date }}</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <a href="/rota/{{ period.id }}/" class="btn btn-outline">← Back to Rota</a>
+    <a href="/staffing-rules/" class="btn btn-primary">⚙ Staffing Rules</a>
+  </div>
+</div>
+
+<!-- ─── ADD EVENT FORM ──────────────────────────────────────────────────── -->
+<div class="card add-event-form">
+  <h2 style="margin-bottom:14px;">➕ Add Event / Highlight</h2>
+  <div class="form-row">
+    <div class="form-group">
+      <label>Date</label>
+      <select id="new-date" style="width:160px;">
+        {% for d in all_dates %}
+        <option value="{{ d|date:'Y-m-d' }}">{{ d|date:"D d M" }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="new-type" style="width:140px;">
+        {% for val, label in event_types %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="flex:1;min-width:200px;">
+      <label>Description</label>
+      <input type="text" id="new-desc" placeholder="e.g. 160pax DDR Ballroom" style="width:100%;">
+    </div>
+    <div class="form-group">
+      <label>Pax</label>
+      <input type="number" id="new-pax" placeholder="0" min="0" style="width:90px;">
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <input type="text" id="new-notes" placeholder="Any extra details" style="width:180px;">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button class="btn btn-success" onclick="addEvent()">Add Event</button>
+    </div>
+  </div>
+  <p id="add-msg" style="display:none;font-size:12px;"></p>
+</div>
+
+<!-- ─── EVENTS LIST ────────────────────────────────────────────────────── -->
+<div id="events-container">
+{% if not events %}
+  <div class="empty-state card" id="empty-msg">
+    <p>No events yet. Add events above to get pax-based staffing recommendations.</p>
+  </div>
+{% else %}
+  {% regroup events by date as events_by_day %}
+  {% for day in events_by_day %}
+  <div class="card" id="day-{{ day.grouper|date:'Y-m-d' }}" style="margin-bottom:16px;">
+    <div class="date-section-header">
+      📅 {{ day.grouper|date:"l d F Y" }}
+      {% with date_iso=day.grouper|date:'Y-m-d' %}
+      {% if recommendations|default_if_none:""|length %}
+      <span class="day-pax" id="day-pax-{{ date_iso }}">
+        {% if recommendations %}
+          {% for k, v in recommendations.items %}{% if k == date_iso %}· {{ v.total_pax }} total pax · Tier: <strong>{{ v.tier|upper }}</strong>{% endif %}{% endfor %}
+        {% endif %}
+      </span>
+      {% endif %}
+      {% endwith %}
+    </div>
+
+    {% for ev in day.list %}
+    <div class="event-card" id="event-{{ ev.id }}" style="margin-bottom:10px;">
+      <span class="tier-badge tier-{{ ev.tier }}">{{ ev.tier|upper }}</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-weight:700;font-size:14px;">{{ ev.description }}</span>
+        <span style="background:#e8f4fd;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600;color:#1a6fb5;">{{ ev.pax }} pax</span>
+        <span style="font-size:11px;color:#888;">{{ ev.get_event_type_display }}</span>
+      </div>
+      {% if ev.notes %}<p style="margin-top:4px;font-size:11px;color:#666;">{{ ev.notes }}</p>{% endif %}
+
+      <!-- Inline edit form -->
+      <div id="edit-form-{{ ev.id }}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #eee;">
+        <div class="form-row">
+          <div class="form-group">
+            <label style="font-size:11px;">Date</label>
+            <select id="edit-date-{{ ev.id }}" style="width:155px;">
+              {% for d in all_dates %}
+              <option value="{{ d|date:'Y-m-d' }}" {% if d == ev.date %}selected{% endif %}>{{ d|date:"D d M" }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;">Type</label>
+            <select id="edit-type-{{ ev.id }}" style="width:135px;">
+              {% for val, label in event_types %}<option value="{{ val }}" {% if val == ev.event_type %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;min-width:180px;">
+            <label style="font-size:11px;">Description</label>
+            <input type="text" id="edit-desc-{{ ev.id }}" value="{{ ev.description }}" style="width:100%;">
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;">Pax</label>
+            <input type="number" id="edit-pax-{{ ev.id }}" value="{{ ev.pax }}" min="0" style="width:80px;">
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;">Notes</label>
+            <input type="text" id="edit-notes-{{ ev.id }}" value="{{ ev.notes }}" style="width:160px;">
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;">&nbsp;</label>
+            <button class="btn btn-primary btn-sm" onclick="saveEvent({{ ev.id }})">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:8px;display:flex;gap:6px;">
+        <button class="btn btn-outline btn-sm" onclick="toggleEdit({{ ev.id }})">✏ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteEvent({{ ev.id }}, '{{ ev.date|date:'Y-m-d' }}')">🗑 Delete</button>
+      </div>
+
+      <!-- Recommendation for this day -->
+      {% with date_iso=ev.date|date:'Y-m-d' %}
+      {% for k, rec in recommendations.items %}
+      {% if k == date_iso %}
+      <div class="rec-panel" id="rec-{{ date_iso }}">
+        <h4>📊 Staffing Recommendation — {{ rec.tier|upper }} · {{ rec.total_pax }} total pax</h4>
+        {% for sr in rec.sections %}
+        <div class="rec-row">
+          <span class="sec-name">{{ sr.section.name }}</span>
+          <span class="count">{{ sr.staff_count }} staff</span>
+          <span class="shift">{{ sr.shift }}</span>
+          <span style="font-size:10px;color:#aaa;">{{ sr.source }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endfor %}
+      {% endwith %}
+
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+{% endif %}
+</div>
+
+<script>
+const PERIOD_ID = {{ period.id }};
+const CSRF = '{{ csrf_token }}';
+
+async function addEvent() {
+  const date = document.getElementById('new-date').value;
+  const type = document.getElementById('new-type').value;
+  const desc = document.getElementById('new-desc').value.trim();
+  const pax  = parseInt(document.getElementById('new-pax').value || '0');
+  const notes= document.getElementById('new-notes').value.trim();
+  if (!desc) { showMsg('add-msg', 'Please enter a description.', 'red'); return; }
+
+  const resp = await apiFetch(`/rota/${PERIOD_ID}/events/save/`, {date, event_type:type, description:desc, pax, notes});
+  if (resp.status === 'ok') {
+    document.getElementById('new-desc').value = '';
+    document.getElementById('new-pax').value = '';
+    document.getElementById('new-notes').value = '';
+    showMsg('add-msg', 'Event added! Refreshing…', 'green');
+    setTimeout(() => location.reload(), 600);
+  }
+}
+
+async function saveEvent(id) {
+  const date = document.getElementById(`edit-date-${id}`).value;
+  const type = document.getElementById(`edit-type-${id}`).value;
+  const desc = document.getElementById(`edit-desc-${id}`).value.trim();
+  const pax  = parseInt(document.getElementById(`edit-pax-${id}`).value || '0');
+  const notes= document.getElementById(`edit-notes-${id}`).value.trim();
+  const resp = await apiFetch(`/rota/${PERIOD_ID}/events/save/`, {id, date, event_type:type, description:desc, pax, notes});
+  if (resp.status === 'ok') {
+    showMsg('add-msg', 'Saved! Refreshing…', 'green');
+    setTimeout(() => location.reload(), 500);
+  }
+}
+
+async function deleteEvent(id, dateIso) {
+  if (!confirm('Delete this event?')) return;
+  const resp = await apiFetch(`/rota/${PERIOD_ID}/events/${id}/delete/`, {});
+  if (resp.status === 'ok') {
+    document.getElementById(`event-${id}`)?.remove();
+    // Remove day block if no more events
+    const dayBlock = document.getElementById(`day-${dateIso}`);
+    if (dayBlock && !dayBlock.querySelector('.event-card')) dayBlock.remove();
+    // Update recommendation panel
+    if (resp.recommendation) updateRecPanel(dateIso, resp.recommendation);
+    else document.getElementById(`rec-${dateIso}`)?.remove();
+  }
+}
+
+function toggleEdit(id) {
+  const el = document.getElementById(`edit-form-${id}`);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function updateRecPanel(dateIso, rec) {
+  const el = document.getElementById(`rec-${dateIso}`);
+  if (!el || !rec) return;
+  let html = `<h4>📊 Staffing Recommendation — ${rec.tier.toUpperCase()} · ${rec.total_pax} total pax</h4>`;
+  rec.sections.forEach(s => {
+    html += `<div class="rec-row"><span class="sec-name">${s.section_name}</span><span class="count">${s.staff_count} staff</span><span class="shift">${s.shift}</span><span style="font-size:10px;color:#aaa;">${s.source}</span></div>`;
+  });
+  el.innerHTML = html;
+}
+
+async function apiFetch(url, body) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'X-CSRFToken': CSRF},
+    body: JSON.stringify(body),
+  });
+  return resp.json();
+}
+
+function showMsg(id, text, color) {
+  const el = document.getElementById(id);
+  el.textContent = text; el.style.color = color; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3000);
+}
+</script>
+{% endblock %}

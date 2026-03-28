@@ -1,0 +1,38 @@
+{% extends 'rota/base.html' %}
+{% load rota_extras %}
+{% block title %}{{ staff.name }} – Patterns{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+  <a href="/staff/" class="btn btn-outline btn-sm">← Staff</a>
+  <h1 style="margin:0;">{{ staff.name }} – Learned Patterns</h1>
+</div>
+<p style="color:#555;margin-bottom:20px;">
+  Role: <strong>{{ staff.role|default:"—" }}</strong> &nbsp;|&nbsp;
+  Section: <strong>{{ staff.section.name|default:"—" }}</strong>
+</p>
+<p style="font-size:12px;color:#888;margin-bottom:16px;">
+  These patterns were learned from imported historical rotas.
+  Higher frequency = more likely to be assigned on that day.
+</p>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;">
+{% for day in days %}
+<div class="card" style="padding:16px;">
+  <h2 style="margin-bottom:10px;border-bottom:2px solid var(--light-blue);padding-bottom:6px;">{{ day }}</h2>
+  {% if by_day|get_item:day %}
+    {% for p in by_day|get_item:day %}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;font-size:12px;">
+      <span style="font-weight:600;
+        {% if p.shift_value == 'OFF' or p.shift_value == 'OFF/R' %}color:#888;{% elif p.shift_value == 'H' %}color:#7a5700;{% elif p.shift_value == 'SICK' %}color:#900;{% elif '-' in p.shift_value %}color:#2a6e00;{% else %}color:#7a3500;{% endif %}">
+        {{ p.shift_value }}
+      </span>
+      <span class="badge" style="background:var(--light-blue);color:var(--navy);">×{{ p.frequency }}</span>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p style="color:#bbb;font-size:12px;">No pattern yet</p>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+{% endblock %}

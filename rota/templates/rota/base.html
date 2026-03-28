@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Rota Manager{% endblock %}</title>
+<style>
+  :root {
+    /* ── Navigation & UI ─────────────────────────────── */
+    --navy: #1f4e79; --blue: #2e75b6; --light-blue: #d6e4f7;
+    --green: #70ad47; --light-green: #e2efda; --yellow: #ffd966;
+    --red: #ff0000; --grey: #d9d9d9; --white: #ffffff;
+    --text: #1a1a1a;
+
+    /* ── Shift cell backgrounds ───────────────────────── */
+    --shift-early:  #C0E6F5;   /* 04:00–07:59 — pale sky */
+    --shift-am:     #E2EFDA;   /* 08:00–11:59 — light green */
+    --shift-pm:     #FCE4D6;   /* 12:00–17:59 — peach */
+    --shift-late:   #F4B084;   /* 18:00–21:59 — salmon */
+    --shift-night:  #B4C6E7;   /* 22:00+ — steel blue */
+    --shift-off:    #d9d9d9;
+    --shift-h:      #ffd966;
+    --shift-sick:   #ffb3b3;
+    --shift-other:  #ffe4d0;
+    --shift-breakfast: #c4f2de;  /* breakfast shifts */
+    --shift-brunch:    #457aed;  /* brunch shifts */
+
+    /* ── Section header colours (from reference ODS) ─── */
+    --sec-exec:      #FFD966;
+    --sec-conf:      #00B050;
+    --sec-duty:      #AEAAAA;
+    --sec-sauce:     #FF0000;
+    --sec-garnish:   #B4C6E7;
+    --sec-larder:    #92D050;
+    --sec-breakfast: #FFE699;
+    --sec-night:     #333333;
+    --sec-canteen:   #808080;
+    --sec-pastry:    #00B0F0;
+    --sec-terrace:   #F4B084;
+  }
+
+  /* ── Shift colour classes ───────────────────────────── */
+  td.shift-early   { background: var(--shift-early)  !important; }
+  td.shift-am      { background: var(--shift-am)     !important; }
+  td.shift-pm      { background: var(--shift-pm)     !important; }
+  td.shift-late    { background: var(--shift-late)   !important; }
+  td.shift-night   { background: var(--shift-night)  !important; }
+  td.shift-off     { background: var(--shift-off)    !important; }
+  td.shift-h       { background: var(--shift-h)      !important; }
+  td.shift-sick    { background: var(--shift-sick)   !important; }
+  td.shift-other     { background: var(--shift-other)     !important; }
+  td.shift-breakfast { background: var(--shift-breakfast) !important; }
+  td.shift-brunch    { background: var(--shift-brunch)   !important; color: #fff; }
+  td.weekend       { opacity: .82; }
+
+  /* legacy aliases still used by old code */
+  td.shift-working { background: var(--shift-am) !important; }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 13px; color: var(--text); background: #f4f6f9; }
+  nav { background: var(--navy); padding: 0 20px; display: flex; align-items: center; gap: 20px; height: 52px; flex-wrap: wrap; }
+  nav a { color: #fff; text-decoration: none; font-weight: 600; font-size: 13px; padding: 6px 0; border-bottom: 3px solid transparent; white-space:nowrap; }
+  nav a:hover, nav a.active { border-bottom-color: var(--yellow); }
+  nav .brand { font-size: 17px; font-weight: 700; letter-spacing: 1px; margin-right: 10px; white-space:nowrap; }
+  .container { max-width: 1500px; margin: 0 auto; padding: 20px 16px; }
+  h1 { font-size: 22px; color: var(--navy); margin-bottom: 20px; }
+  h2 { font-size: 16px; color: var(--navy); margin-bottom: 12px; }
+  .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); padding: 20px; margin-bottom: 20px; }
+  .btn { display: inline-block; padding: 7px 16px; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; text-decoration: none; }
+  .btn-primary { background: var(--navy); color: #fff; }
+  .btn-primary:hover { background: var(--blue); }
+  .btn-success { background: #1a8754; color: #fff; }
+  .btn-success:hover { background: #157347; }
+  .btn-outline { background: transparent; border: 2px solid var(--navy); color: var(--navy); }
+  .btn-sm { padding: 4px 11px; font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .messages { list-style: none; margin-bottom: 16px; }
+  .messages li { padding: 10px 16px; border-radius: 5px; margin-bottom: 6px; }
+  .messages .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+  .messages .error   { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+  input, select { padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+  label { font-weight: 600; display: block; margin-bottom: 4px; }
+  .form-group { margin-bottom: 14px; }
+
+  /* ── Rota table ─────────────────────────────────────── */
+  table.rota-table { border-collapse: collapse; font-size: 11px; min-width: 100%; }
+  table.rota-table th, table.rota-table td { border: 1px solid #ccc; padding: 3px 5px; white-space: nowrap; text-align: center; min-width: 72px; }
+  table.rota-table .col-name { text-align: left; min-width: 180px; font-weight: 600; padding-left: 8px; }
+  table.rota-table .section-row td { font-weight: 700; font-size: 12px; }
+
+  /* Section row colours */
+  .sec-row-EXECUTIVE-CHEF td        { background: var(--sec-exec)      !important; color:#1a1a1a; }
+  .sec-row-CONFERENCE td            { background: var(--sec-conf)      !important; color:#fff; }
+  .sec-row-DUTY td                  { background: var(--sec-duty)      !important; color:#1a1a1a; }
+  .sec-row-SAUCE td                 { background: var(--sec-sauce)     !important; color:#fff; }
+  .sec-row-GARNISH td               { background: var(--sec-garnish)   !important; color:#1a1a1a; }
+  .sec-row-LARDER td                { background: var(--sec-larder)    !important; color:#1a1a1a; }
+  .sec-row-BREAKFAST td             { background: var(--sec-breakfast) !important; color:#1a1a1a; }
+  .sec-row-NIGHT td                 { background: var(--sec-night)     !important; color:#fff; }
+  .sec-row-CANTEEN td, .sec-row-CAFE td { background: var(--sec-canteen) !important; color:#fff; }
+  .sec-row-PASTRY td                { background: var(--sec-pastry)    !important; color:#fff; }
+  .sec-row-TERRACE td               { background: var(--sec-terrace)   !important; color:#1a1a1a; }
+
+  /* ── Colour legend ──────────────────────────────────── */
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; font-size: 11px; }
+  .legend span { display: flex; align-items: center; gap: 4px; }
+  .legend-box { width: 15px; height: 15px; border-radius: 3px; border: 1px solid #aaa; display:inline-block; }
+
+  /* ── Stats ──────────────────────────────────────────── */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .stat-card { background: #fff; border-radius: 8px; padding: 16px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .stat-card .num { font-size: 30px; font-weight: 700; color: var(--navy); }
+  .stat-card .lbl { font-size: 11px; color: #666; margin-top: 4px; }
+
+  /* ── Hours warning colours ──────────────────────────── */
+  .hrs-ok    { color: #1a8754; font-weight: 700; }
+  .hrs-over  { color: #c0392b; font-weight: 700; }
+  .hrs-under { color: #856404; font-weight: 700; }
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<nav>
+  <span class="brand">🍽 Rota Manager</span>
+  <a href="/" {% if request.resolver_match.url_name == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
+  <a href="/import/" {% if request.resolver_match.url_name == 'import_rota' %}class="active"{% endif %}>Import</a>
+  <a href="/generate/" {% if request.resolver_match.url_name == 'generate_rota' %}class="active"{% endif %}>Generate</a>
+  <a href="/staff/" {% if request.resolver_match.url_name == 'staff_list' %}class="active"{% endif %}>Staff</a>
+  <a href="/staff/manage/" {% if request.resolver_match.url_name == 'staff_manage' %}class="active"{% endif %}>👤 Manage Staff</a>
+  <a href="/staffing-rules/" {% if request.resolver_match.url_name == 'staffing_rules' %}class="active"{% endif %}>⚙ Rules</a>
+</nav>
+<div class="container">
+{% if messages %}
+<ul class="messages">
+  {% for msg in messages %}
+  <li class="{{ msg.tags }}">{{ msg }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% block content %}{% endblock %}
+</div>
+</body>
+</html>

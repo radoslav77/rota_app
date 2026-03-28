@@ -1,0 +1,32 @@
+{% extends 'rota/base.html' %}
+{% block title %}Import Rota{% endblock %}
+{% block content %}
+<h1>Import Excel Rota</h1>
+<div class="card" style="max-width:600px;">
+  <p style="margin-bottom:16px;color:#444;">
+    Upload your kitchen rota <strong>.xlsx</strong> file. The system will parse all rota sheets,
+    import staff and shift data, and automatically learn shift patterns for future generation.
+  </p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="form-group">
+      <label for="rota_file">Select Excel File (.xlsx)</label>
+      <input type="file" name="rota_file" id="rota_file" accept=".xlsx" required
+             style="display:block;width:100%;padding:10px;border:2px dashed #aaa;border-radius:6px;background:#fafafa;">
+    </div>
+    <button type="submit" class="btn btn-primary">📥 Import Rota</button>
+    <a href="/" class="btn btn-outline" style="margin-left:8px;">Cancel</a>
+  </form>
+</div>
+
+<div class="card" style="max-width:600px;">
+  <h2>What happens on import?</h2>
+  <ul style="line-height:1.9;padding-left:20px;color:#444;">
+    <li>All rota sheets are parsed (e.g. <em>15.02</em>, <em>01.03</em>)</li>
+    <li>Staff members and sections are created or matched</li>
+    <li>All shift entries are saved (shifts, OFF, H, SICK, etc.)</li>
+    <li>The <strong>self-learning algorithm</strong> updates shift patterns per staff per day-of-week</li>
+    <li>Future generated rotas will use these patterns as defaults</li>
+  </ul>
+</div>
+{% endblock %}

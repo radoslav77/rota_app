@@ -1,0 +1,122 @@
+{% extends 'rota/base.html' %}
+{% block title %}Staffing Rules{% endblock %}
+{% block extra_head %}
+<style>
+  .rules-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .rules-table th { background:var(--navy); color:#fff; padding:8px 10px; text-align:left; }
+  .rules-table td { padding:7px 10px; border-bottom:1px solid #eee; }
+  .rules-table tr:hover td { background:#f7f9fc; }
+  .tier-box { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; }
+  .pax-range { font-family:monospace; color:#1f4e79; }
+  .info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:20px; }
+  .info-card { background:#f0f6ff; border:1px solid #bcd4f5; border-radius:8px; padding:14px; }
+  .info-card h3 { font-size:13px; color:#1f4e79; margin-bottom:6px; }
+  .info-card p { font-size:11px; color:#445; line-height:1.5; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+  <h1 style="margin:0;">⚙ Staffing Rules</h1>
+  <a href="javascript:history.back()" class="btn btn-outline">← Back</a>
+</div>
+
+<div class="info-grid">
+  <div class="info-card">
+    <h3>What are Staffing Rules?</h3>
+    <p>Rules define exactly how many staff from each kitchen section are needed when an event has a certain number of pax. The algorithm uses your rules first; if no rule matches, it uses built-in tier defaults.</p>
+  </div>
+  <div class="info-card">
+    <h3>Pax Tiers (defaults)</h3>
+    <p><strong>Tasting</strong>: 0 pax · <strong>Small</strong>: 1–30 · <strong>Medium</strong>: 31–100 · <strong>Large</strong>: 101–250 · <strong>VIP</strong>: 251+</p>
+    <p style="margin-top:6px;">Custom rules override these defaults for the matching section + pax range.</p>
+  </div>
+  <div class="info-card">
+    <h3>Shift Suggestions</h3>
+    <p>The shift time associated with a rule is suggested to the algorithm when it is allocating staff on event days. Common values: <code>0800-1630</code>, <code>1200-2100</code>, <code>1000-1830</code>.</p>
+  </div>
+</div>
+
+<!-- ─── ADD RULE FORM ─────────────────────────────────────────────── -->
+<div class="card">
+  <h2 style="margin-bottom:14px;">Add New Rule</h2>
+  <form method="post" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="create">
+    <div class="form-group" style="margin:0;">
+      <label>Event Type</label>
+      <select name="event_type" style="width:140px;">
+        {% for t in event_types %}<option>{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Pax Min</label>
+      <input type="number" name="pax_min" value="0" min="0" style="width:80px;">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Pax Max</label>
+      <input type="number" name="pax_max" value="9999" min="0" style="width:80px;">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Section</label>
+      <select name="section_id" style="width:200px;">
+        {% for sec in sections %}<option value="{{ sec.id }}">{{ sec.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Staff Count</label>
+      <input type="number" name="staff_count" value="2" min="1" style="width:80px;">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Shift</label>
+      <input type="text" name="shift_suggestion" value="0800-1630" style="width:110px;">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Notes</label>
+      <input type="text" name="notes" placeholder="Optional" style="width:160px;">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>&nbsp;</label>
+      <button type="submit" class="btn btn-success">Add Rule</button>
+    </div>
+  </form>
+</div>
+
+<!-- ─── RULES TABLE ──────────────────────────────────────────────── -->
+<div class="card">
+  <h2 style="margin-bottom:14px;">Current Rules ({{ rules|length }})</h2>
+  {% if rules %}
+  <table class="rules-table">
+    <thead>
+      <tr>
+        <th>Event Type</th><th>Pax Range</th><th>Section</th>
+        <th>Staff Needed</th><th>Shift</th><th>Notes</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for rule in rules %}
+    <tr>
+      <td><strong>{{ rule.event_type }}</strong></td>
+      <td class="pax-range">{{ rule.pax_min }}–{% if rule.pax_max == 9999 %}∞{% else %}{{ rule.pax_max }}{% endif %}</td>
+      <td>{{ rule.section.name }}</td>
+      <td style="text-align:center;font-weight:700;color:var(--navy);">{{ rule.staff_count }}</td>
+      <td><code>{{ rule.shift_suggestion }}</code></td>
+      <td style="color:#888;font-size:11px;">{{ rule.notes }}</td>
+      <td>
+        <form method="post" style="display:inline;">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="rule_id" value="{{ rule.id }}">
+          <button type="submit" class="btn btn-sm" style="background:#fde8e8;color:#c0392b;border:1px solid #f5c6cb;"
+            onclick="return confirm('Delete this rule?')">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#888;text-align:center;padding:30px;">No custom rules yet. The algorithm will use built-in tier defaults.</p>
+  {% endif %}
+</div>
+{% endblock %}

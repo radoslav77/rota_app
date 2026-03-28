@@ -1,0 +1,332 @@
+{% extends 'rota/base.html' %}
+{% load rota_extras %}
+{% block title %}Staff Management{% endblock %}
+{% block extra_head %}
+<style>
+  :root {
+    --sec-exec:      #FFD966;
+    --sec-conf:      #00B050;
+    --sec-duty:      #AEAAAA;
+    --sec-sauce:     #FF0000;
+    --sec-garnish:   #B4C6E7;
+    --sec-larder:    #92D050;
+    --sec-breakfast: #FFE699;
+    --sec-night:     #333333;
+    --sec-canteen:   #808080;
+    --sec-pastry:    #00B0F0;
+    --sec-terrace:   #F4B084;
+  }
+  .section-tab { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; color:#fff; margin-right:4px; }
+  .staff-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+  .chef-card { background:#fff; border:1px solid #ddd; border-radius:10px; padding:16px; position:relative; transition:box-shadow .15s; }
+  .chef-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+  .chef-card .section-bar { height:5px; border-radius:5px 5px 0 0; position:absolute; top:0; left:0; right:0; }
+  .chef-card .chef-name { font-size:15px; font-weight:700; color:#1f4e79; margin-top:4px; }
+  .chef-card .chef-role { font-size:11px; color:#888; margin-bottom:8px; }
+  .chef-card .meta { font-size:11px; color:#555; display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+  .chip-ft { background:#d4edda; color:#155724; }
+  .chip-pt { background:#d1ecf1; color:#0c5460; }
+  .chip-agency { background:#fff3cd; color:#856404; }
+  .chip-zero { background:#f8d7da; color:#721c24; }
+  .chip-inactive { background:#e2e3e5; color:#6c757d; }
+  .btn-edit { background:#e8f4fd; color:#1a6fb5; border:1px solid #bcd4f5; }
+  .btn-delete { background:#fde8e8; color:#c0392b; border:1px solid #f5c6cb; }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; display:none; align-items:center; justify-content:center; }
+  .modal-overlay.active { display:flex; }
+  .modal { background:#fff; border-radius:12px; padding:28px; width:min(95vw,620px); max-height:90vh; overflow-y:auto; }
+  .modal h2 { margin-bottom:18px; color:#1f4e79; font-size:18px; }
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .form-grid .full { grid-column:1/-1; }
+  .section-filter { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+  .sec-btn { padding:5px 14px; border-radius:20px; font-size:12px; font-weight:600; border:none; cursor:pointer; opacity:.65; }
+  .sec-btn.active { opacity:1; box-shadow:0 2px 8px rgba(0,0,0,.2); }
+  .hours-badge { position:absolute; top:12px; right:12px; background:#1f4e79; color:#fff; border-radius:8px; padding:3px 9px; font-size:11px; font-weight:700; }
+  .search-bar { position:relative; max-width:340px; margin-bottom:16px; }
+  .search-bar input { width:100%; padding:8px 36px 8px 12px; border:1px solid #ccc; border-radius:6px; font-size:13px; }
+  .search-bar .icon { position:absolute; right:10px; top:50%; transform:translateY(-50%); color:#888; }
+  .empty-section { text-align:center; padding:40px; color:#888; background:#fafafa; border-radius:8px; border:2px dashed #ddd; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+  <h1 style="margin:0;">👨‍🍳 Staff Management</h1>
+  <button class="btn btn-success" onclick="openAdd()">＋ Add New Chef</button>
+</div>
+
+<!-- ─── SECTION FILTER ───────────────────────────────────────────── -->
+<div class="section-filter" id="sec-filter">
+  <button class="sec-btn active" data-sec="all" style="background:#1f4e79;color:#fff;"
+    onclick="filterSection(this,'all')">All</button>
+  {% for section in sections %}
+  <button class="sec-btn active" data-sec="{{ section.id }}"
+    style="background:{{ section.color|default:'#888' }};color:{% if section.color == '#000000' or section.color == '#FF0000' or section.color == '#333333' %}#fff{% elif section.color == '#00B050' or section.color == '#00B0F0' %}#fff{% else %}#1a1a1a{% endif %};"
+    onclick="filterSection(this,'{{ section.id }}')">{{ section.name }}</button>
+  {% endfor %}
+</div>
+
+<!-- ─── SEARCH ────────────────────────────────────────────────────── -->
+<div class="search-bar">
+  <input type="text" id="search-input" placeholder="Search by name or role…" oninput="filterSearch()">
+  <span class="icon">🔍</span>
+</div>
+
+<!-- ─── STAFF GRID ────────────────────────────────────────────────── -->
+{% if sections_with_staff %}
+  {% for section, staff_members in sections_with_staff %}
+  <div class="card" id="sec-block-{{ section.id }}" style="margin-bottom:20px;">
+    <h2 style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:{{ section.color|default:'#888' }};"></span>
+      {{ section.name }}
+      <span style="font-size:12px;font-weight:400;color:#888;">({{ staff_members|length }} chef{{ staff_members|length|pluralize }})</span>
+    </h2>
+    <div class="staff-grid">
+    {% for chef in staff_members %}
+    <div class="chef-card" id="chef-{{ chef.id }}" data-sec="{{ section.id }}"
+         data-name="{{ chef.name|lower }}" data-role="{{ chef.role|lower }}">
+      <div class="section-bar" style="background:{{ section.color|default:'#888' }};"></div>
+      <span class="hours-badge" title="Contracted hours/week">{{ chef.contracted_hours_pw }}h/wk</span>
+      <div class="chef-name">{{ chef.name }}</div>
+      <div class="chef-role">{{ chef.role|default:"Chef" }}</div>
+      <div class="meta">
+        <span class="chip chip-{{ chef.employment_type }}">{{ chef.get_employment_type_display }}</span>
+        {% if not chef.is_active %}<span class="chip chip-inactive">INACTIVE</span>{% endif %}
+        {% if chef.email %}<span>✉ {{ chef.email }}</span>{% endif %}
+        {% if chef.phone %}<span>📞 {{ chef.phone }}</span>{% endif %}
+      </div>
+      {% if chef.start_date %}<div style="font-size:10px;color:#aaa;margin-top:6px;">Started: {{ chef.start_date|date:"d M Y" }}</div>{% endif %}
+      {% if chef.end_date %}<div style="font-size:10px;color:#c0392b;margin-top:2px;">Left: {{ chef.end_date|date:"d M Y" }}</div>{% endif %}
+      <div style="margin-top:12px;display:flex;gap:6px;">
+        <button class="btn btn-sm btn-edit" onclick='editChef({{ chef|chef_json }})'>✏ Edit</button>
+        <button class="btn btn-sm btn-delete" onclick="deleteChef({{ chef.id }},'{{ chef.name|escapejs }}')">🗑 Remove</button>
+        {% if chef.is_active %}
+        <button class="btn btn-sm" style="background:#fff3cd;border:1px solid #ffc107;color:#856404;"
+          onclick="toggleActive({{ chef.id }},false,'{{ chef.name|escapejs }}')">Deactivate</button>
+        {% else %}
+        <button class="btn btn-sm" style="background:#d4edda;border:1px solid #c3e6cb;color:#155724;"
+          onclick="toggleActive({{ chef.id }},true,'{{ chef.name|escapejs }}')">Reactivate</button>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="empty-section">No staff in this section yet.</div>
+  {% endfor %}
+{% else %}
+<div class="card empty-section">
+  <p>No staff members found. Import a rota or add chefs manually using the button above.</p>
+</div>
+{% endif %}
+
+<!-- ─── ADD / EDIT MODAL ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="chef-modal">
+  <div class="modal">
+    <h2 id="modal-title">Add New Chef</h2>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Full Name *</label>
+        <input type="text" id="f-name" placeholder="e.g. John Smith" style="width:100%;">
+      </div>
+      <div class="form-group">
+        <label>Role / Title</label>
+        <input type="text" id="f-role" placeholder="e.g. CHEF DE PARTIE" style="width:100%;">
+      </div>
+      <div class="form-group">
+        <label>Section *</label>
+        <select id="f-section" style="width:100%;">
+          {% for section in sections %}
+          <option value="{{ section.id }}">{{ section.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Employment Type</label>
+        <select id="f-emptype" style="width:100%;">
+          <option value="full_time">Full Time</option>
+          <option value="part_time">Part Time</option>
+          <option value="agency">Agency</option>
+          <option value="zero_hours">Zero Hours</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Contracted Hours/Week</label>
+        <input type="number" id="f-hours" value="40" min="0" max="60" step="0.5" style="width:100%;">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="f-email" placeholder="chef@hotel.com" style="width:100%;">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="text" id="f-phone" placeholder="+44 7700 000000" style="width:100%;">
+      </div>
+      <div class="form-group">
+        <label>Start Date</label>
+        <input type="date" id="f-start" style="width:100%;">
+      </div>
+      <div class="form-group">
+        <label>End Date (if left)</label>
+        <input type="date" id="f-end" style="width:100%;">
+      </div>
+      <div class="form-group full">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="f-active" checked>
+          <span>Active (included in rota generation)</span>
+        </label>
+      </div>
+    </div>
+    <p id="modal-msg" style="display:none;font-size:12px;padding:6px 10px;border-radius:4px;margin:10px 0;"></p>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn btn-success" onclick="saveChef()">Save Chef</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CSRF = '{{ csrf_token }}';
+let editingId = null;
+
+function openAdd() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Add New Chef';
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-role').value = '';
+  document.getElementById('f-section').selectedIndex = 0;
+  document.getElementById('f-emptype').value = 'full_time';
+  document.getElementById('f-hours').value = '40';
+  document.getElementById('f-email').value = '';
+  document.getElementById('f-phone').value = '';
+  document.getElementById('f-start').value = '';
+  document.getElementById('f-end').value = '';
+  document.getElementById('f-active').checked = true;
+  hideMsg();
+  document.getElementById('chef-modal').classList.add('active');
+}
+
+function editChef(data) {
+  editingId = data.id;
+  document.getElementById('modal-title').textContent = 'Edit Chef — ' + data.name;
+  document.getElementById('f-name').value = data.name || '';
+  document.getElementById('f-role').value = data.role || '';
+  document.getElementById('f-section').value = data.section_id || '';
+  document.getElementById('f-emptype').value = data.employment_type || 'full_time';
+  document.getElementById('f-hours').value = data.contracted_hours_pw || 40;
+  document.getElementById('f-email').value = data.email || '';
+  document.getElementById('f-phone').value = data.phone || '';
+  document.getElementById('f-start').value = data.start_date || '';
+  document.getElementById('f-end').value = data.end_date || '';
+  document.getElementById('f-active').checked = data.is_active;
+  hideMsg();
+  document.getElementById('chef-modal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('chef-modal').classList.remove('active');
+}
+
+async function saveChef() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { showMsg('Name is required.', 'error'); return; }
+
+  const payload = {
+    id: editingId,
+    name,
+    role: document.getElementById('f-role').value.trim(),
+    section_id: document.getElementById('f-section').value,
+    employment_type: document.getElementById('f-emptype').value,
+    contracted_hours_pw: document.getElementById('f-hours').value,
+    email: document.getElementById('f-email').value.trim(),
+    phone: document.getElementById('f-phone').value.trim(),
+    start_date: document.getElementById('f-start').value || null,
+    end_date: document.getElementById('f-end').value || null,
+    is_active: document.getElementById('f-active').checked,
+  };
+
+  const resp = await apiPost('/staff/save/', payload);
+  if (resp.status === 'ok') {
+    showMsg('Saved!', 'success');
+    setTimeout(() => location.reload(), 600);
+  } else {
+    showMsg(resp.message || 'Error saving.', 'error');
+  }
+}
+
+async function deleteChef(id, name) {
+  if (!confirm(`Permanently delete ${name}? All their shift entries will also be deleted.`)) return;
+  const resp = await apiPost('/staff/' + id + '/delete/', {});
+  if (resp.status === 'ok') {
+    document.getElementById('chef-' + id)?.remove();
+  } else {
+    alert(resp.message || 'Error deleting.');
+  }
+}
+
+async function toggleActive(id, active, name) {
+  const verb = active ? 'reactivate' : 'deactivate';
+  if (!confirm(`${verb.charAt(0).toUpperCase()+verb.slice(1)} ${name}?`)) return;
+  const resp = await apiPost('/staff/' + id + '/toggle-active/', {is_active: active});
+  if (resp.status === 'ok') location.reload();
+  else alert(resp.message || 'Error.');
+}
+
+function filterSection(btn, secId) {
+  // Toggle all / individual
+  const allBtn = document.querySelector('[data-sec="all"]');
+  if (secId === 'all') {
+    document.querySelectorAll('.sec-btn').forEach(b => b.classList.add('active'));
+    document.querySelectorAll('.chef-card').forEach(c => c.style.display = '');
+    document.querySelectorAll('[id^="sec-block-"]').forEach(b => b.style.display = '');
+  } else {
+    allBtn.classList.remove('active');
+    btn.classList.toggle('active');
+    // Show/hide cards
+    document.querySelectorAll('.chef-card').forEach(c => {
+      const secId2 = c.dataset.sec;
+      const showing = document.querySelector(`[data-sec="${secId2}"]`)?.classList.contains('active');
+      c.style.display = showing ? '' : 'none';
+    });
+  }
+  applySearch();
+}
+
+function filterSearch() { applySearch(); }
+
+function applySearch() {
+  const q = document.getElementById('search-input').value.toLowerCase().trim();
+  document.querySelectorAll('.chef-card').forEach(c => {
+    if (c.style.display === 'none') return;
+    const name = c.dataset.name || '';
+    const role = c.dataset.role || '';
+    c.style.display = (!q || name.includes(q) || role.includes(q)) ? '' : 'none';
+  });
+}
+
+async function apiPost(url, body) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+    body: JSON.stringify(body),
+  });
+  return resp.json();
+}
+
+function showMsg(text, type) {
+  const el = document.getElementById('modal-msg');
+  el.textContent = text;
+  el.style.background = type === 'error' ? '#f8d7da' : '#d4edda';
+  el.style.color = type === 'error' ? '#721c24' : '#155724';
+  el.style.display = 'block';
+}
+function hideMsg() { document.getElementById('modal-msg').style.display = 'none'; }
+
+// Close on backdrop click
+document.getElementById('chef-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+{% endblock %}

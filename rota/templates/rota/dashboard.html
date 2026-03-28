@@ -1,0 +1,53 @@
+{% extends 'rota/base.html' %}
+{% block title %}Dashboard – Rota Manager{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="stats-grid">
+  <div class="stat-card"><div class="num">{{ periods.count }}</div><div class="lbl">Rota Periods</div></div>
+  <div class="stat-card"><div class="num">{{ staff_count }}</div><div class="lbl">Active Staff</div></div>
+  <div class="stat-card"><div class="num">{{ section_count }}</div><div class="lbl">Sections</div></div>
+  <div class="stat-card"><div class="num">{{ pattern_count }}</div><div class="lbl">Learned Patterns</div></div>
+</div>
+
+<div class="card">
+  <h2>Quick Actions</h2>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <a href="/import/" class="btn btn-primary">📥 Import Excel Rota</a>
+    <a href="/generate/" class="btn btn-success">🗓 Generate New Rota</a>
+    <a href="/staff/" class="btn btn-outline">👨‍🍳 Manage Staff</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Recent Rota Periods</h2>
+  {% if periods %}
+  <table style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr style="background:var(--light-blue);text-align:left;">
+        <th style="padding:8px;">Label</th>
+        <th style="padding:8px;">Start</th>
+        <th style="padding:8px;">End</th>
+        <th style="padding:8px;">Created</th>
+        <th style="padding:8px;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for p in periods %}
+    <tr style="border-bottom:1px solid #eee;">
+      <td style="padding:8px;font-weight:600;">{{ p.label }}</td>
+      <td style="padding:8px;">{{ p.start_date }}</td>
+      <td style="padding:8px;">{{ p.end_date }}</td>
+      <td style="padding:8px;color:#666;">{{ p.created_at|date:"d M Y H:i" }}</td>
+      <td style="padding:8px;">
+        <a href="/rota/{{ p.id }}/" class="btn btn-outline btn-sm">View</a>
+        <a href="/rota/{{ p.id }}/export/" class="btn btn-success btn-sm">⬇ Export</a>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#888;">No rota periods yet. <a href="/import/">Import your first rota</a> to get started.</p>
+  {% endif %}
+</div>
+{% endblock %}

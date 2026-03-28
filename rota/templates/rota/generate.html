@@ -1,0 +1,557 @@
+{% extends 'rota/base.html' %}
+{% load rota_extras %}
+{% block title %}Generate Rota{% endblock %}
+{% block extra_head %}
+<style>
+  /* ── Step indicator ──────────────────────────── */
+  .steps { display:flex; gap:0; margin-bottom:24px; }
+  .step  { flex:1; text-align:center; padding:10px 6px; font-size:12px; font-weight:700;
+           background:#e8edf3; color:#888; border-right:2px solid #fff; position:relative; }
+  .step.active  { background:var(--navy); color:#fff; }
+  .step.done    { background:#1a8754; color:#fff; }
+  .step:first-child { border-radius:8px 0 0 8px; }
+  .step:last-child  { border-right:none; border-radius:0 8px 8px 0; }
+  .step .num    { font-size:18px; display:block; }
+
+  /* ── Events planner ─────────────────────────── */
+  .event-list   { list-style:none; margin:0; padding:0; }
+  .event-item   { display:flex; align-items:center; gap:8px; padding:8px 10px;
+                  border:1px solid #dde; border-radius:6px; margin-bottom:6px;
+                  background:#fafbff; flex-wrap:wrap; }
+  .event-item .tier-pill { padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; white-space:nowrap; }
+  .tier-tasting  { background:#e8e8e8; color:#555; }
+  .tier-small    { background:#d6e4f7; color:#1f4e79; }
+  .tier-medium   { background:#d4edda; color:#155724; }
+  .tier-large    { background:#fff3cd; color:#856404; }
+  .tier-vip      { background:#f8d7da; color:#721c24; }
+  .event-item .ev-date  { font-weight:700; font-size:12px; color:var(--navy); min-width:70px; }
+  .event-item .ev-desc  { flex:1; font-size:12px; }
+  .event-item .ev-pax   { font-size:11px; color:#555; white-space:nowrap; }
+  .event-add-row { display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:12px; }
+  .event-add-row .form-group { margin:0; }
+
+  /* ── Holiday grid ───────────────────────────── */
+  .gen-grid       { overflow-x:auto; }
+  .holiday-table  { border-collapse:collapse; font-size:11px; }
+  .holiday-table th, .holiday-table td { border:1px solid #ccc; padding:3px 4px; text-align:center; }
+  .holiday-table .col-name  { text-align:left; min-width:160px; padding-left:6px; font-weight:600; }
+  .holiday-table .section-hdr td { background:var(--light-blue); font-weight:700; color:var(--navy); }
+  select.shift-sel { font-size:10px; padding:2px; width:80px; border-radius:3px; }
+  select.shift-sel.is-h    { background:var(--shift-h); }
+  select.shift-sel.is-off  { background:var(--shift-off); }
+  select.shift-sel.is-sick { background:var(--shift-sick); }
+  select.shift-sel.is-working { background:var(--shift-am); }
+  .date-hdr  { font-size:10px; min-width:80px; }
+  .weekend-hdr { background:var(--shift-h); }
+
+  /* ── Staff toggle ───────────────────────────── */
+  .staff-toggle-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; }
+  .staff-chip { display:flex; align-items:center; gap:8px; padding:7px 10px; border:1px solid #ddd;
+                border-radius:6px; font-size:12px; cursor:pointer; user-select:none; transition:all .15s; }
+  .staff-chip.active   { background:#d4edda; border-color:#c3e6cb; }
+  .staff-chip.inactive { background:#f8d7da; border-color:#f5c6cb; opacity:.7; }
+  .staff-chip .dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .staff-chip.active .dot   { background:#1a8754; }
+  .staff-chip.inactive .dot { background:#c0392b; }
+  .sec-label { font-weight:700; font-size:12px; color:var(--navy); margin:12px 0 6px; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Generate New Rota</h1>
+
+<!-- ─── STEP INDICATOR ──────────────────────────────── -->
+<div class="steps">
+  <div class="step active" id="step-ind-1"><span class="num">1</span>Period</div>
+  <div class="step" id="step-ind-2"><span class="num">2</span>Events</div>
+  <div class="step" id="step-ind-3"><span class="num">3</span>Staff</div>
+  <div class="step" id="step-ind-4"><span class="num">4</span>Holidays</div>
+  <div class="step" id="step-ind-5"><span class="num">5</span>Generate</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     STEP 1: PERIOD DATES
+════════════════════════════════════════════════════ -->
+<div id="step-1">
+  <div class="card" style="max-width:740px;">
+    <h2>Step 1 — Set Rota Period</h2>
+    <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
+      <div class="form-group" style="margin:0;">
+        <label>Rota Label</label>
+        <input type="text" id="label" value="Rota {{ today|slice:':7' }}" style="width:200px;">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Start Date</label>
+        <input type="date" id="start_date" value="{{ today }}">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>End Date</label>
+        <input type="date" id="end_date">
+      </div>
+      <button type="button" class="btn btn-primary" onclick="goStep2()">Next: Plan Events →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     STEP 2: EVENTS / HIGHLIGHTS
+════════════════════════════════════════════════════ -->
+<div id="step-2" style="display:none;">
+  <div class="card">
+    <h2>Step 2 — Upcoming Events &amp; Highlights</h2>
+    <p style="font-size:12px;color:#555;margin-bottom:14px;">
+      Add any events, functions, or highlights for this rota period.
+      The algorithm uses these to ensure correct staffing levels on event days.
+      You can also copy events from a previous period.
+    </p>
+
+    <!-- Copy from previous period -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+      <label style="display:inline;font-weight:600;font-size:12px;">Copy from previous period:</label>
+      <select id="copy-from-period" style="width:260px;">
+        <option value="">— None —</option>
+        {% for p in recent_periods %}
+        <option value="{{ p.id }}" data-start="{{ p.start_date }}" data-end="{{ p.end_date }}">
+          {{ p.label }} ({{ p.start_date }})
+        </option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="copyEventsFromPeriod()">Copy Events</button>
+      <span id="copy-msg" style="font-size:11px;color:#1a8754;display:none;"></span>
+    </div>
+
+    <!-- Event list -->
+    <ul class="event-list" id="event-list-container">
+      <li id="no-events-msg" style="color:#aaa;font-size:12px;padding:12px;text-align:center;border:2px dashed #ddd;border-radius:6px;list-style:none;">
+        No events added yet. Use the form below to add events for this period.
+      </li>
+    </ul>
+
+    <!-- Add event form -->
+    <div class="event-add-row">
+      <div class="form-group">
+        <label style="font-size:11px;">Date</label>
+        <input type="date" id="ev-date" style="width:155px;">
+      </div>
+      <div class="form-group">
+        <label style="font-size:11px;">Type</label>
+        <select id="ev-type" style="width:140px;">
+          <option value="DDR">DDR</option>
+          <option value="Dinner">Dinner</option>
+          <option value="Lunch">Lunch</option>
+          <option value="Reception">Reception</option>
+          <option value="Breakfast">Breakfast</option>
+          <option value="Buffet">Buffet</option>
+          <option value="Tasting">Menu Tasting</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:1;min-width:180px;">
+        <label style="font-size:11px;">Description</label>
+        <input type="text" id="ev-desc" placeholder="e.g. ClimateWorks Foundation 120pax DDR" style="width:100%;">
+      </div>
+      <div class="form-group">
+        <label style="font-size:11px;">Pax</label>
+        <input type="number" id="ev-pax" value="0" min="0" style="width:80px;">
+      </div>
+      <div class="form-group">
+        <label style="font-size:11px;">&nbsp;</label>
+        <button class="btn btn-success btn-sm" onclick="addEvent()">＋ Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;">
+    <button class="btn btn-outline" onclick="goStep(1)">← Back</button>
+    <button class="btn btn-primary" onclick="goStep(3)">Next: Review Staff →</button>
+    <button class="btn btn-outline" onclick="goStep(3)" style="color:#888;border-color:#ccc;">Skip (no events)</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     STEP 3: STAFF ACTIVE / INACTIVE TOGGLE
+════════════════════════════════════════════════════ -->
+<div id="step-3" style="display:none;">
+  <div class="card">
+    <h2>Step 3 — Active Staff for This Rota</h2>
+    <p style="font-size:12px;color:#555;margin-bottom:14px;">
+      Only <span style="color:#1a8754;font-weight:700;">active</span> staff are included in rota generation.
+      Click a name to toggle active/inactive for this session.
+      Changes here are <strong>saved permanently</strong> to the database.
+    </p>
+    <div id="staff-toggle-container">
+      <!-- Populated by JS from staffData -->
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;">
+    <button class="btn btn-outline" onclick="goStep(2)">← Back</button>
+    <button class="btn btn-primary" onclick="goStep(4)">Next: Set Holidays →</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     STEP 4: HOLIDAYS / OFF DAYS
+════════════════════════════════════════════════════ -->
+<div id="step-4" style="display:none;">
+  <div class="card">
+    <h2>Step 4 — Holidays &amp; Days Off</h2>
+    <p style="color:#555;margin-bottom:12px;font-size:12px;">
+      Set <strong>H</strong> (Holiday), <strong>OFF</strong>, <strong>SICK</strong> etc. for individual chefs.
+      Leave as <em>auto</em> to let the algorithm decide based on learned patterns.
+    </p>
+    <div class="gen-grid" id="holiday-grid"></div>
+  </div>
+  <div style="display:flex;gap:10px;">
+    <button class="btn btn-outline" onclick="goStep(3)">← Back</button>
+    <button class="btn btn-primary" onclick="goStep(5)">Next: Generate →</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     STEP 5: GENERATE
+════════════════════════════════════════════════════ -->
+<div id="step-5" style="display:none;">
+  <div class="card" style="max-width:640px;">
+    <h2>Step 5 — Generate Rota</h2>
+    <form method="post" id="gen-form">
+      {% csrf_token %}
+      <input type="hidden" name="label"        id="f-label">
+      <input type="hidden" name="start_date"   id="f-start">
+      <input type="hidden" name="end_date"     id="f-end">
+      <input type="hidden" name="holiday_data" id="f-holiday-data">
+      <input type="hidden" name="events_data"  id="f-events-data">
+
+      <!-- Summary box -->
+      <div id="gen-summary" style="background:#f0f6ff;border:1px solid #bcd4f5;border-radius:6px;padding:14px;margin-bottom:16px;font-size:12px;"></div>
+
+      <!-- Algorithm options -->
+      <div style="background:#fafafa;border:1px solid #e0e0e0;border-radius:6px;padding:14px;margin-bottom:16px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;margin-bottom:10px;">
+          <input type="checkbox" name="use_section_rules" value="1" id="use-section-rules" checked>
+          Apply section minimum cover rules
+          <span style="font-size:10px;font-weight:400;color:#888;">(Sauce/Garnish/Larder 1×1000-2300, Pastry 2 AM + 1 late)</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;">
+          <input type="checkbox" name="use_pax_allocation" value="1" id="use-pax" checked>
+          Apply pax-based staffing boost on event days
+          <span style="font-size:10px;font-weight:400;color:#888;">(boosts headcount based on event size)</span>
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-success" onclick="submitGen(event)" style="font-size:15px;padding:10px 28px;">
+        🗓 Generate Rota
+      </button>
+      <a href="/" class="btn btn-outline" style="margin-left:8px;">Cancel</a>
+    </form>
+  </div>
+  <div style="margin-top:8px;">
+    <button class="btn btn-outline" onclick="goStep(4)">← Back</button>
+  </div>
+</div>
+
+<script>
+// ─── DATA FROM SERVER ───────────────────────────────────────────────
+const ALL_STAFF = [
+  {% for staff in staff_list %}
+  {
+    id: {{ staff.id }},
+    name: "{{ staff.name|escapejs }}",
+    role: "{{ staff.role|escapejs }}",
+    section: "{{ staff.section.name|default:'General'|escapejs }}",
+    section_id: {{ staff.section.id|default:0 }},
+    is_active: {{ staff.is_active|yesno:"true,false" }},
+  },
+  {% endfor %}
+];
+
+const SECTION_COLORS = {
+  {% for section in sections %}
+  "{{ section.id }}": "{{ section|section_color }}",
+  {% endfor %}
+};
+
+const CSRF = '{{ csrf_token }}';
+const STATUS_OPTIONS = ['auto','H','OFF','SICK','Comp','Paternity','Maternity','TBC'];
+
+// ─── STATE ─────────────────────────────────────────────────────────
+let pendingEvents = [];    // [{date, type, desc, pax}]
+let activeStaffIds = new Set(ALL_STAFF.filter(s => s.is_active).map(s => s.id));
+let currentDates  = [];
+
+// ─── STEP NAVIGATION ───────────────────────────────────────────────
+function goStep(n) {
+  // Validate step 1 before moving on
+  if (n >= 2) {
+    if (!getStart() || !getEnd() || getStart() > getEnd()) {
+      alert('Please set valid start and end dates first.');
+      return;
+    }
+    // Set default ev-date to start date
+    document.getElementById('ev-date').value = getStart();
+  }
+  if (n >= 3) { buildDates(); }
+  if (n === 3) { renderStaffToggles(); }
+  if (n === 4 && !document.querySelector('.shift-sel')) { buildHolidayGrid(); }
+  if (n === 5) { buildGenSummary(); }
+
+  for (let i = 1; i <= 5; i++) {
+    const block = document.getElementById('step-' + i);
+    const ind   = document.getElementById('step-ind-' + i);
+    if (block) block.style.display = i === n ? '' : 'none';
+    if (ind) {
+      ind.classList.toggle('active', i === n);
+      ind.classList.toggle('done',   i < n);
+    }
+  }
+}
+function goStep2() { goStep(2); }
+
+function getStart() { return document.getElementById('start_date').value; }
+function getEnd()   { return document.getElementById('end_date').value; }
+
+// ─── EVENTS PLANNER ─────────────────────────────────────────────────
+function addEvent() {
+  const date = document.getElementById('ev-date').value;
+  const type = document.getElementById('ev-type').value;
+  const desc = document.getElementById('ev-desc').value.trim();
+  const pax  = parseInt(document.getElementById('ev-pax').value || 0);
+  if (!date || !desc) { alert('Please fill in a date and description.'); return; }
+  if (date < getStart() || date > getEnd()) {
+    alert('Event date must be within the rota period (' + getStart() + ' – ' + getEnd() + ').');
+    return;
+  }
+  pendingEvents.push({ date, type, desc, pax });
+  pendingEvents.sort((a, b) => a.date.localeCompare(b.date));
+  renderEventList();
+  document.getElementById('ev-desc').value = '';
+  document.getElementById('ev-pax').value = '0';
+}
+
+function removeEvent(i) {
+  pendingEvents.splice(i, 1);
+  renderEventList();
+}
+
+function getTier(pax) {
+  if (pax === 0)   return 'tasting';
+  if (pax <= 30)   return 'small';
+  if (pax <= 100)  return 'medium';
+  if (pax <= 250)  return 'large';
+  return 'vip';
+}
+
+function renderEventList() {
+  const container = document.getElementById('event-list-container');
+  const noMsg     = document.getElementById('no-events-msg');
+  noMsg.style.display = pendingEvents.length === 0 ? '' : 'none';
+
+  // Remove any existing event rows (keep the no-events-msg element intact)
+  container.querySelectorAll('.event-item').forEach(el => el.remove());
+
+  if (pendingEvents.length === 0) return;
+
+  pendingEvents.forEach((ev, i) => {
+    const tier    = getTier(ev.pax);
+    const d       = new Date(ev.date + 'T00:00:00');
+    const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    const li = document.createElement('li');
+    li.className = 'event-item';
+    li.innerHTML = `
+      <span class="ev-date">${dayName} ${ev.date}</span>
+      <span class="tier-pill tier-${tier}">${tier.toUpperCase()}</span>
+      <span class="ev-desc">${ev.desc}</span>
+      <span class="ev-pax">${ev.pax > 0 ? ev.pax + ' pax' : 'No pax'} · ${ev.type}</span>
+      <button onclick="removeEvent(${i})" style="background:#fde8e8;border:1px solid #f5c6cb;color:#c0392b;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">✕</button>`;
+    container.appendChild(li);
+  });
+}
+
+async function copyEventsFromPeriod() {
+  const sel = document.getElementById('copy-from-period');
+  const periodId = sel.value;
+  if (!periodId) { alert('Select a period first.'); return; }
+
+  // Fetch events for that period
+  const resp = await fetch(`/rota/${periodId}/events/json/`);
+  if (!resp.ok) { alert('Could not load events from that period.'); return; }
+  const data = await resp.json();
+  const start = getStart(); const end = getEnd();
+  let added = 0;
+
+  (data.events || []).forEach(ev => {
+    if (ev.date >= start && ev.date <= end) {
+      pendingEvents.push({ date: ev.date, type: ev.event_type, desc: ev.description, pax: ev.pax });
+      added++;
+    }
+  });
+  pendingEvents.sort((a, b) => a.date.localeCompare(b.date));
+  renderEventList();
+
+  const msg = document.getElementById('copy-msg');
+  msg.textContent = added > 0 ? `✓ Copied ${added} event(s)` : 'No matching events in this period range';
+  msg.style.display = '';
+  msg.style.color = added > 0 ? '#1a8754' : '#856404';
+  setTimeout(() => msg.style.display = 'none', 3000);
+}
+
+// ─── STAFF TOGGLES ──────────────────────────────────────────────────
+function renderStaffToggles() {
+  const container = document.getElementById('staff-toggle-container');
+  // Group by section
+  const sections = {};
+  const sectionOrder = [];
+  ALL_STAFF.forEach(s => {
+    if (!sections[s.section]) { sections[s.section] = []; sectionOrder.push(s.section); }
+    sections[s.section].push(s);
+  });
+
+  let html = '';
+  sectionOrder.forEach(sec => {
+    html += `<div class="sec-label">${sec}</div><div class="staff-toggle-grid">`;
+    sections[sec].forEach(s => {
+      const isActive = activeStaffIds.has(s.id);
+      html += `<div class="staff-chip ${isActive ? 'active' : 'inactive'}" id="chip-${s.id}"
+                    onclick="toggleStaff(${s.id})">
+        <div class="dot"></div>
+        <div>
+          <div style="font-weight:700;">${s.name}</div>
+          ${s.role ? `<div style="font-size:10px;color:#888;">${s.role}</div>` : ''}
+        </div>
+        <div style="margin-left:auto;font-size:10px;color:#888;">${isActive ? 'Active' : 'Inactive'}</div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+async function toggleStaff(id) {
+  const isNowActive = !activeStaffIds.has(id);
+  // Update UI immediately
+  if (isNowActive) activeStaffIds.add(id); else activeStaffIds.delete(id);
+  const chip = document.getElementById('chip-' + id);
+  if (chip) {
+    chip.className = 'staff-chip ' + (isNowActive ? 'active' : 'inactive');
+    chip.querySelector('.dot').style.background = isNowActive ? '#1a8754' : '#c0392b';
+    chip.querySelector('[style*="margin-left:auto"]').textContent = isNowActive ? 'Active' : 'Inactive';
+  }
+  // Persist to database
+  try {
+    await fetch('/staff/' + id + '/toggle-active/', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken': CSRF},
+      body: JSON.stringify({is_active: isNowActive}),
+    });
+  } catch(e) { console.warn('Could not persist staff toggle:', e); }
+}
+
+// ─── HOLIDAY GRID ───────────────────────────────────────────────────
+function buildDates() {
+  const dates = [];
+  let cur = new Date(getStart() + 'T00:00:00');
+  const endDate = new Date(getEnd() + 'T00:00:00');
+  while (cur <= endDate && dates.length < 14) {
+    dates.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  currentDates = dates;
+}
+
+function buildHolidayGrid() {
+  if (!currentDates.length) buildDates();
+  const dates = currentDates;
+  const activeStaff = ALL_STAFF.filter(s => activeStaffIds.has(s.id));
+
+  const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const months   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Build section groupings
+  const sections = {};
+  const sectionOrder = [];
+  activeStaff.forEach(s => {
+    if (!sections[s.section]) { sections[s.section] = []; sectionOrder.push(s.section); }
+    sections[s.section].push(s);
+  });
+
+  // Mark event dates
+  const eventDates = new Set(pendingEvents.map(ev => ev.date));
+
+  let html = '<table class="holiday-table"><thead><tr><th class="col-name">Staff</th>';
+  dates.forEach(d => {
+    const iso   = d.toISOString().slice(0, 10);
+    const isWknd = d.getDay() === 0 || d.getDay() === 6;
+    const hasEv  = eventDates.has(iso);
+    const title  = hasEv ? '🎉 Event day' : '';
+    html += `<th class="date-hdr${isWknd?' weekend-hdr':''}" title="${title}" style="${hasEv?'background:#fff3cd;':''}">
+      ${dayNames[(d.getDay()+6)%7]}<br>${d.getDate()} ${months[d.getMonth()]}${hasEv?' 🎉':''}
+    </th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  sectionOrder.forEach(sec => {
+    const members = sections[sec] || [];
+    if (!members.length) return;
+    html += `<tr class="section-hdr"><td colspan="${dates.length+1}" style="background:#d6e4f7;color:#1f4e79;font-weight:700;">${sec}</td></tr>`;
+    members.forEach(s => {
+      html += `<tr><td class="col-name">${s.name}${s.role ? '<br><span style="font-weight:400;font-size:10px;">'+s.role+'</span>' : ''}</td>`;
+      dates.forEach(d => {
+        const iso = d.toISOString().slice(0, 10);
+        const key = `${s.id}__${iso}`;
+        html += `<td><select class="shift-sel" data-key="${key}" onchange="colorSel(this)">`;
+        STATUS_OPTIONS.forEach(opt => html += `<option value="${opt}">${opt}</option>`);
+        html += '</select></td>';
+      });
+      html += '</tr>';
+    });
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('holiday-grid').innerHTML = html;
+}
+
+function colorSel(sel) {
+  sel.className = 'shift-sel';
+  const v = sel.value;
+  if (v === 'H')    sel.classList.add('is-h');
+  else if (v === 'OFF')  sel.classList.add('is-off');
+  else if (v === 'SICK') sel.classList.add('is-sick');
+  else if (v !== 'auto') sel.classList.add('is-working');
+}
+
+// ─── GENERATE SUMMARY ──────────────────────────────────────────────
+function buildGenSummary() {
+  const activeCount = activeStaffIds.size;
+  const eventCount  = pendingEvents.length;
+  const start = getStart(), end = getEnd();
+  let html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
+    <div><strong style="display:block;color:var(--navy);font-size:18px;">${activeCount}</strong>Active chefs</div>
+    <div><strong style="display:block;color:var(--navy);font-size:18px;">${eventCount}</strong>Events planned</div>
+    <div><strong style="display:block;color:var(--navy);font-size:18px;">{{ pattern_count }}</strong>Learned patterns</div>
+  </div>`;
+  if (eventCount) {
+    html += '<hr style="margin:12px 0;border:none;border-top:1px solid #dde;">';
+    html += '<strong style="font-size:11px;">Events:</strong><br>';
+    pendingEvents.forEach(ev => {
+      html += `<span style="font-size:11px;background:#fff3cd;border-radius:4px;padding:1px 6px;margin:2px;display:inline-block;">${ev.date} · ${ev.type} · ${ev.pax}pax · ${ev.desc}</span>`;
+    });
+  }
+  document.getElementById('gen-summary').innerHTML = html;
+}
+
+// ─── FORM SUBMIT ────────────────────────────────────────────────────
+function submitGen(e) {
+  e.preventDefault();
+  const holidayData = {};
+  document.querySelectorAll('.shift-sel').forEach(sel => {
+    if (sel.value && sel.value !== 'auto') {
+      holidayData[sel.dataset.key] = sel.value;
+    }
+  });
+  document.getElementById('f-label').value        = document.getElementById('label').value;
+  document.getElementById('f-start').value         = getStart();
+  document.getElementById('f-end').value           = getEnd();
+  document.getElementById('f-holiday-data').value  = JSON.stringify(holidayData);
+  document.getElementById('f-events-data').value   = JSON.stringify(pendingEvents);
+  document.getElementById('gen-form').submit();
+}
+</script>
+{% endblock %}
