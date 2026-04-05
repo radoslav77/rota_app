@@ -1,7 +1,7 @@
 # ROTA MANAGER V6 Features
 
 ## Brunch Allocation Caps
-- Introduction of caps on brunch allocations to ensure optimal resource utilization.
+- Introduction of caps on brunch allocations to ensure optimal resource utilisation.
 
 ## Breakfast Labelling
 - Enhanced breakfast labelling for better clarity and communication.
